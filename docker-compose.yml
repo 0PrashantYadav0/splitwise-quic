@@ -1,0 +1,24 @@
+# Splitwise-QUIC - local container deployment.
+#
+#   docker compose up --build
+#   open https://localhost:4433   (accept the self-signed dev cert once)
+#
+# Note: QUIC needs the UDP port published alongside the TCP port.
+
+services:
+  splitwise-quic:
+    build: .
+    image: splitwise-quic:latest
+    container_name: splitwise-quic
+    restart: unless-stopped
+    ports:
+      - "4433:4433/tcp"   # HTTP/2 bootstrap (TLS over TCP)
+      - "4433:4433/udp"   # HTTP/3 + QUIC + WebTransport
+    volumes:
+      - sqquic-data:/data # SQLite DB + uploaded receipts
+    environment:
+      # Set to "1" to require mutual TLS (clients must present a cert).
+      REQUIRE_MTLS: "0"
+
+volumes:
+  sqquic-data:

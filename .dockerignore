@@ -1,0 +1,13 @@
+# Keep build context small + force module-mode builds (vendor is gitignored).
+.git
+.gitignore
+vendor
+*.db
+*.db-wal
+*.db-shm
+uploads
+splitwise-quic
+*.png
+*.pdf
+.DS_Store
+.vscode
