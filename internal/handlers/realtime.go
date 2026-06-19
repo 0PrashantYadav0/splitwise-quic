@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
+	"splitwise-quic/internal/realtime"
 )
 
 // sse streams group events to the browser via Server-Sent Events.
@@ -29,7 +31,6 @@ func (h *Handlers) sse(w http.ResponseWriter, r *http.Request) {
 	// Initial comment so the client marks the stream open immediately.
 	fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
-
 	for {
 		select {
 		case <-r.Context().Done():
@@ -79,6 +80,41 @@ func (h *Handlers) webTransport(w http.ResponseWriter, r *http.Request) {
 		case ev := <-events:
 			if err := session.SendDatagram([]byte(ev.Message)); err != nil {
 				return // session gone; client will auto-reconnect
+			}
+		}
+	}
+}
+
+// userWebTransport opens a per-user push channel. It is connected from every
+// page so a user receives personal notifications (added to a group, a new
+// expense that involves them, a settlement) as QUIC datagrams anywhere in
+// the app - not just while viewing one group.
+func (h *Handlers) userWebTransport(w http.ResponseWriter, r *http.Request) {
+	u := h.currentUser(r)
+	if u == nil {
+		httpError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	session, err := h.srv.WebTransport().Upgrade(w, r)
+	if err != nil {
+		log.Printf("user webtransport upgrade failed: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer session.CloseWithError(0, "bye")
+
+	events, unsub := h.hub.Subscribe(realtime.UserTopic(u.ID))
+	defer unsub()
+
+	_ = session.SendDatagram([]byte("notifications connected"))
+
+	for {
+		select {
+		case <-session.Context().Done():
+			return
+		case ev := <-events:
+			if err := session.SendDatagram([]byte(ev.Message)); err != nil {
+				return
 			}
 		}
 	}

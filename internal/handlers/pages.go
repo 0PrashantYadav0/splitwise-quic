@@ -18,7 +18,7 @@ func (h *Handlers) dashboard(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	data := dashboardView{view: h.base(r, "Dashboard"), Groups: groups}
+	data := dashboardView{view: h.base(w, r, "Dashboard"), Groups: groups}
 	if err := h.render.Page(w, "dashboard", data); err != nil {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -28,6 +28,7 @@ type groupView struct {
 	view
 	Group    *models.Group
 	AllUsers []models.User
+	Form     expenseFormView
 }
 
 // requireMember loads the group and verifies the current user belongs to it.
@@ -62,7 +63,7 @@ func (h *Handlers) groupPage(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	data := groupView{view: h.base(r, g.Name), Group: g, AllUsers: all}
+	data := groupView{view: h.base(w, r, g.Name), Group: g, AllUsers: all, Form: newCreateForm(g)}
 	if err := h.render.Page(w, "group", data); err != nil {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 	}

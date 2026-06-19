@@ -4,6 +4,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver, no cgo
 )
@@ -26,8 +27,19 @@ func Open(path string) (*sql.DB, error) {
 }
 
 func migrate(conn *sql.DB) error {
-	_, err := conn.Exec(schema)
-	return err
+	if _, err := conn.Exec(schema); err != nil {
+		return err
+	}
+	// Additive column migrations (idempotent): ignore "duplicate column" so the
+	// app upgrades older databases without a dedicated migration tool.
+	for _, stmt := range []string{
+		`ALTER TABLE expenses ADD COLUMN receipt_path TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := conn.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	return nil
 }
 
 const schema = `
@@ -94,7 +106,16 @@ CREATE TABLE IF NOT EXISTS activities (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS comments (
+    id         TEXT PRIMARY KEY,
+    expense_id TEXT NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    body       TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_expenses_group ON expenses(group_id);
 CREATE INDEX IF NOT EXISTS idx_activities_group ON activities(group_id);
 CREATE INDEX IF NOT EXISTS idx_members_user ON group_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_expense ON comments(expense_id);
 `

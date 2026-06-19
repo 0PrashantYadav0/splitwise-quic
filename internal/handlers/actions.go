@@ -43,6 +43,7 @@ func (h *Handlers) addMember(w http.ResponseWriter, r *http.Request) {
 			_ = h.store.LogActivity(g.ID, userFrom(r).ID, "added "+added.Name)
 		}
 		h.publish(g.ID, "member", "A member was added")
+		h.notifyUser(uid, "member", "You were added to \""+g.Name+"\"")
 	}
 	http.Redirect(w, r, "/g/"+g.ID, http.StatusSeeOther)
 }
@@ -52,26 +53,26 @@ func (h *Handlers) createExpense(w http.ResponseWriter, r *http.Request) {
 	if g == nil {
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		httpError(w, err.Error(), http.StatusBadRequest)
+	if err := parseAnyForm(r); err != nil {
+		h.flashRedirect(w, r, "Could not read the form: "+err.Error(), "/g/"+g.ID)
 		return
 	}
 
 	amount, err := parseMoney(r.FormValue("amount"))
 	if err != nil || amount <= 0 {
-		httpError(w, "invalid amount", http.StatusBadRequest)
+		h.flashRedirect(w, r, "Please enter a valid amount greater than zero.", "/g/"+g.ID)
 		return
 	}
 	st := models.SplitType(r.FormValue("split_type"))
 	included := r.Form["include"]
 	if len(included) == 0 {
-		httpError(w, "select at least one participant", http.StatusBadRequest)
+		h.flashRedirect(w, r, "Select at least one participant for the split.", "/g/"+g.ID)
 		return
 	}
 
 	inputs, err := h.buildInputs(r, st, included)
 	if err != nil {
-		httpError(w, err.Error(), http.StatusBadRequest)
+		h.flashRedirect(w, r, friendlySplitErr(err), "/g/"+g.ID)
 		return
 	}
 
@@ -87,14 +88,20 @@ func (h *Handlers) createExpense(w http.ResponseWriter, r *http.Request) {
 		e.Currency = "USD"
 	}
 	if _, err := h.store.CreateExpense(e, inputs); err != nil {
-		httpError(w, err.Error(), http.StatusBadRequest)
+		h.flashRedirect(w, r, friendlySplitErr(err), "/g/"+g.ID)
 		return
+	}
+	// Receipt upload (sent over a QUIC stream when on HTTP/3).
+	if fname, err := h.saveReceipt(r, e.ID); err == nil && fname != "" {
+		_ = h.store.SetReceipt(g.ID, e.ID, fname)
 	}
 	if payer, err := h.store.UserByID(e.PaidBy); err == nil {
 		_ = h.store.LogActivity(g.ID, userFrom(r).ID,
 			fmt.Sprintf("added \"%s\" (%s %s paid by %s)", e.Description, e.Currency, render2(e.Amount), payer.Name))
 	}
 	h.publish(g.ID, "expense", "New expense: "+e.Description)
+	h.notifyMembers(g.ID, userFrom(r).ID, "expense",
+		fmt.Sprintf("New expense in \"%s\": %s (%s %s)", g.Name, e.Description, e.Currency, render2(e.Amount)))
 	http.Redirect(w, r, "/g/"+g.ID, http.StatusSeeOther)
 }
 
@@ -140,7 +147,7 @@ func (h *Handlers) settle(w http.ResponseWriter, r *http.Request) {
 	}
 	amount, err := parseMoney(r.FormValue("amount"))
 	if err != nil || amount <= 0 {
-		httpError(w, "invalid amount", http.StatusBadRequest)
+		h.flashRedirect(w, r, "Please enter a valid settlement amount.", "/g/"+g.ID)
 		return
 	}
 	st := &models.Settlement{
@@ -161,6 +168,10 @@ func (h *Handlers) settle(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("recorded %s paying %s %s %s", from.Name, to.Name, st.Currency, render2(st.Amount)))
 	}
 	h.publish(g.ID, "settlement", "A payment was settled")
+	if from != nil && to != nil {
+		h.notifyUser(st.ToUser, "settlement",
+			fmt.Sprintf("%s paid you %s %s in \"%s\"", from.Name, st.Currency, render2(st.Amount), g.Name))
+	}
 	http.Redirect(w, r, "/g/"+g.ID, http.StatusSeeOther)
 }
 
@@ -178,8 +189,52 @@ func (h *Handlers) deleteExpense(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/g/"+g.ID, http.StatusSeeOther)
 }
 
+// trim is a tiny alias for strings.TrimSpace used across handlers.
+func trim(s string) string { return strings.TrimSpace(s) }
+
+// upper trims and upper-cases (used for currency codes).
+func upper(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
+
+// friendlySplitErr turns split-math errors into guidance the user can act on.
+func friendlySplitErr(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case strings.Contains(err.Error(), "reconcile"):
+		return "The split doesn't add up to the total. For exact amounts they must sum to the total; for percentages they must total 100%."
+	case strings.Contains(err.Error(), "exact"):
+		return "Enter a valid exact amount for each participant."
+	case strings.Contains(err.Error(), "percentage"):
+		return "Enter a valid percentage for each participant (they must total 100%)."
+	case strings.Contains(err.Error(), "share"):
+		return "Enter a valid (non-negative) share for each participant."
+	default:
+		return "Couldn't save the expense: " + err.Error()
+	}
+}
+
 func (h *Handlers) publish(groupID, kind, msg string) {
-	h.hub.Publish(realtime.Event{GroupID: groupID, Kind: kind, Message: msg})
+	h.hub.Publish(groupID, realtime.Event{Kind: kind, Message: msg})
+}
+
+// notifyMembers sends a personal push notification to every group member
+// except the actor who triggered the change.
+func (h *Handlers) notifyMembers(groupID, exceptUserID, kind, msg string) {
+	members, err := h.store.GroupMembers(groupID)
+	if err != nil {
+		return
+	}
+	for _, m := range members {
+		if m.ID == exceptUserID {
+			continue
+		}
+		h.hub.Publish(realtime.UserTopic(m.ID), realtime.Event{Kind: kind, Message: msg})
+	}
+}
+
+// notifyUser sends a personal push notification to a single user.
+func (h *Handlers) notifyUser(userID, kind, msg string) {
+	h.hub.Publish(realtime.UserTopic(userID), realtime.Event{Kind: kind, Message: msg})
 }
 
 // parseMoney converts a decimal string like "12.34" into minor units (1234).

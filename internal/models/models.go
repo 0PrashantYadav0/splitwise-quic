@@ -40,9 +40,21 @@ type Expense struct {
 	Amount      int64     `json:"amount"` // minor units (cents), avoids float drift
 	Currency    string    `json:"currency"`
 	SplitType   SplitType `json:"split_type"`
+	ReceiptPath string    `json:"receipt_path,omitempty"` // uploaded receipt image, if any
 	CreatedAt   time.Time `json:"created_at"`
 	Shares      []Share   `json:"shares,omitempty"`
+	Comments    []Comment `json:"comments,omitempty"`
 	PaidByName  string    `json:"paid_by_name,omitempty"`
+}
+
+// Comment is a free-text note attached to an expense.
+type Comment struct {
+	ID        string    `json:"id"`
+	ExpenseID string    `json:"expense_id"`
+	UserID    string    `json:"user_id"`
+	UserName  string    `json:"user_name,omitempty"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Share is one participant's portion of an expense (in minor units).
