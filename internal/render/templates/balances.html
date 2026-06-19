@@ -2,15 +2,19 @@
 {{if .Balances}}
   {{range $cur, $list := .Balances}}
     <div class="mb-4">
-      <div class="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">{{$cur}}</div>
+      <div class="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-600">{{$cur}}</div>
       <ul class="space-y-1.5 text-sm">
         {{range $list}}
           <li class="flex items-center justify-between gap-2">
-            <span class="font-medium text-slate-700 dark:text-slate-200">{{.UserName}}</span>
+            <span class="font-medium text-slate-300">{{.UserName}}</span>
             {{if gt .Net 0}}
-              <span class="pill bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">gets back {{money .Net}}</span>
+              <span class="pill border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+                gets back {{money .Net}}
+              </span>
             {{else}}
-              <span class="pill bg-red-500/10 text-red-600 dark:text-red-400">owes {{absMoney .Net}}</span>
+              <span class="pill border border-red-500/20 bg-red-500/10 text-red-400">
+                owes {{absMoney .Net}}
+              </span>
             {{end}}
           </li>
         {{end}}
@@ -18,34 +22,44 @@
     </div>
   {{end}}
 
-  <div class="mt-4 border-t divider pt-4">
-    <div class="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">Simplified payments</div>
+  <div class="mt-4 border-t border-white/[.07] pt-4">
+    <div class="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-600">Simplified payments</div>
     {{$gid := .GroupID}}
     {{$any := false}}
     {{range $cur, $tx := .Transfers}}
       {{range $tx}}
         {{$any = true}}
-        <form method="post" action="/g/{{$gid}}/settle" class="mb-2 flex items-center justify-between gap-2 rounded-xl border divider bg-slate-50/60 px-3 py-2 text-sm dark:bg-slate-800/40">
-          <span class="text-slate-700 dark:text-slate-200">
-            {{.FromName}} <span class="muted">&rarr;</span> {{.ToName}}
-            <span class="ml-1 font-semibold text-slate-900 dark:text-white">{{.Currency}} {{money .Amount}}</span>
+        <form method="post" action="/g/{{$gid}}/settle"
+              class="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl
+                     border border-white/[.07] bg-slate-800/50 px-3 py-3 text-sm">
+          <span class="flex min-w-0 flex-wrap items-center gap-1 text-slate-300">
+            <span class="font-medium text-slate-200">{{.FromName}}</span>
+            <svg class="h-3.5 w-3.5 shrink-0 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0-5 5m5-5H6"/>
+            </svg>
+            <span class="font-medium text-slate-200">{{.ToName}}</span>
+            <span class="ml-0.5 font-semibold text-white">{{.Currency}} {{money .Amount}}</span>
           </span>
           <input type="hidden" name="from_user" value="{{.FromID}}">
           <input type="hidden" name="to_user" value="{{.ToID}}">
           <input type="hidden" name="amount" value="{{money .Amount}}">
           <input type="hidden" name="currency" value="{{.Currency}}">
-          <button class="btn-ghost shrink-0 px-3 py-1 text-xs">Settle</button>
+          <button class="btn-ghost shrink-0">Settle ✓</button>
         </form>
       {{end}}
     {{end}}
     {{if not $any}}
-      <div class="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2.5 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
+      <div class="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3 text-sm font-medium text-emerald-400">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/>
+        </svg>
         All settled up!
       </div>
     {{end}}
   </div>
 {{else}}
-  <div class="rounded-xl border border-dashed divider px-3 py-6 text-center text-sm muted">No balances yet — add an expense.</div>
+  <div class="rounded-xl border border-dashed border-white/[.07] px-3 py-6 text-center text-sm text-slate-600">
+    No balances yet — add an expense.
+  </div>
 {{end}}
 {{end}}
