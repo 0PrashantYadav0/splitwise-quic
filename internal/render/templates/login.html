@@ -1,0 +1,72 @@
+{{define "login"}}{{template "head" .}}
+<div class="mx-auto grid max-w-5xl items-center gap-8 py-6 lg:grid-cols-2">
+  <!-- Hero / pitch -->
+  <section class="order-2 lg:order-1">
+    <span class="pill bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+      <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Powered by HTTP/3 + QUIC
+    </span>
+    <h1 class="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
+      Split expenses,<br><span class="bg-gradient-to-r from-emerald-500 to-teal-400 bg-clip-text text-transparent">at the speed of QUIC.</span>
+    </h1>
+    <p class="mt-4 max-w-md text-base muted">
+      Track shared costs with friends. Balances update live over QUIC datagrams,
+      debts simplify automatically, and the math never loses a penny.
+    </p>
+    <ul class="mt-6 grid max-w-md gap-3 text-sm">
+      <li class="flex items-center gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg></span> Four split modes: equal, exact, %, shares</li>
+      <li class="flex items-center gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg></span> Multi-currency balances &amp; smart settle-up</li>
+      <li class="flex items-center gap-3"><span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg></span> Real-time activity feed across every device</li>
+    </ul>
+  </section>
+
+  <!-- Auth card -->
+  <section class="order-1 lg:order-2">
+    <div class="card p-0 overflow-hidden">
+      <!-- Tabs -->
+      <div class="grid grid-cols-2 text-sm font-semibold">
+        <button type="button" data-tab="login" class="auth-tab border-b-2 border-emerald-500 py-3 text-emerald-600 dark:text-emerald-400">Log in</button>
+        <button type="button" data-tab="signup" class="auth-tab border-b-2 border-transparent py-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">Sign up</button>
+      </div>
+
+      <div class="p-6">
+        {{if .Error}}
+          <div class="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg><span>{{.Error}}</span>
+          </div>
+        {{end}}
+
+        <!-- Login form -->
+        <form method="post" action="/login" data-pane="login" class="space-y-4">
+          <div>
+            <label class="label">Email</label>
+            <input name="email" type="email" required class="input" autocomplete="email" placeholder="you@example.com">
+          </div>
+          <div>
+            <label class="label">Password</label>
+            <input name="password" type="password" required class="input" autocomplete="current-password" placeholder="••••••••">
+          </div>
+          <button class="btn-primary w-full py-2.5">Log in</button>
+        </form>
+
+        <!-- Signup form -->
+        <form method="post" action="/signup" data-pane="signup" class="hidden space-y-4">
+          <div>
+            <label class="label">Name</label>
+            <input name="name" required class="input" placeholder="Ada Lovelace">
+          </div>
+          <div>
+            <label class="label">Email</label>
+            <input name="email" type="email" required class="input" placeholder="you@example.com">
+          </div>
+          <div>
+            <label class="label">Password</label>
+            <input name="password" type="password" required minlength="6" class="input" placeholder="at least 6 characters">
+          </div>
+          <button class="btn-primary w-full py-2.5">Create account</button>
+        </form>
+      </div>
+    </div>
+    <p class="mt-3 text-center text-xs muted">Self-signed dev cert — your browser may warn once. That's expected.</p>
+  </section>
+</div>
+{{template "foot" .}}{{end}}
