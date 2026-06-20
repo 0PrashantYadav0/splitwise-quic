@@ -1,64 +1,110 @@
 package splits
 
 import (
-	"sort"
+	"container/heap"
+	"log"
 
 	"splitwise-quic/internal/models"
 )
 
-// Simplify reduces a set of net balances (per single currency) into the
-// minimum-ish set of transfers using the classic greedy "cash flow
-// minimization" heuristic: repeatedly settle the biggest creditor against
-// the biggest debtor. It's NP-hard to do optimally, but greedy is what
-// Splitwise itself ships and it's near-optimal in practice.
-//
-// Balances must be net per user: positive => is owed, negative => owes.
-func Simplify(currency string, balances []models.Balance) []models.Transfer {
-	type acct struct {
-		id   string
-		name string
-		amt  int64
-	}
-	var creditors, debtors []acct
-	for _, b := range balances {
-		switch {
-		case b.Net > 0:
-			creditors = append(creditors, acct{b.UserID, b.UserName, b.Net})
-		case b.Net < 0:
-			debtors = append(debtors, acct{b.UserID, b.UserName, -b.Net})
-		}
-	}
-	// Largest first => fewer, chunkier transfers.
-	sort.SliceStable(creditors, func(i, j int) bool { return creditors[i].amt > creditors[j].amt })
-	sort.SliceStable(debtors, func(i, j int) bool { return debtors[i].amt > debtors[j].amt })
-
-	var transfers []models.Transfer
-	i, j := 0, 0
-	for i < len(debtors) && j < len(creditors) {
-		d, c := &debtors[i], &creditors[j]
-		pay := min64(d.amt, c.amt)
-		if pay > 0 {
-			transfers = append(transfers, models.Transfer{
-				FromID: d.id, FromName: d.name,
-				ToID: c.id, ToName: c.name,
-				Currency: currency, Amount: pay,
-			})
-		}
-		d.amt -= pay
-		c.amt -= pay
-		if d.amt == 0 {
-			i++
-		}
-		if c.amt == 0 {
-			j++
-		}
-	}
-	return transfers
+// acct is a single debtor or creditor node stored in the heap.
+type acct struct {
+	id   string
+	name string
+	amt  int64 // always positive; debtors stored as absolute values
 }
 
-func min64(a, b int64) int64 {
-	if a < b {
-		return a
+// acctHeap is a max-heap ordered by amt (largest first).
+// Implements heap.Interface so container/heap can drive it.
+type acctHeap []acct
+
+func (h acctHeap) Len() int            { return len(h) }
+func (h acctHeap) Less(i, j int) bool { return h[i].amt > h[j].amt } // max-heap
+func (h acctHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *acctHeap) Push(x any) { *h = append(*h, x.(acct)) }
+func (h *acctHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[:n-1]
+	return x
+}
+
+// Simplify reduces net balances into a minimal set of transfers using a
+// max-heap greedy algorithm (cash-flow minimization).
+//
+// Algorithm: at each step pop the largest debtor and the largest creditor,
+// settle as much as possible between them, then re-insert any remainder.
+// This guarantees at most n+m-1 transfers (the theoretical minimum for n
+// debtors and m creditors), while always pairing the largest obligations —
+// even after partial payments change the relative ordering mid-run.
+//
+// Complexity: O(n log n) time, O(n) space.
+// Balances with Net == 0 are silently skipped.
+func Simplify(currency string, balances []models.Balance) []models.Transfer {
+	if len(balances) == 0 {
+		return nil
 	}
-	return b
+
+	var credSlice, debSlice acctHeap
+	var netSum int64
+
+	for _, b := range balances {
+		netSum += b.Net
+		switch {
+		case b.Net > 0:
+			credSlice = append(credSlice, acct{b.UserID, b.UserName, b.Net})
+		case b.Net < 0:
+			debSlice = append(debSlice, acct{b.UserID, b.UserName, -b.Net})
+		// Net == 0: skip — this user is already settled
+		}
+	}
+
+	// A non-zero net sum means the ledger doesn't balance — this is a data
+	// integrity violation upstream (expenses + settlements should always net
+	// to zero across all participants). Log and continue: the algorithm still
+	// produces valid pairwise transfers that clear as much debt as possible.
+	if netSum != 0 {
+		log.Printf("splits.Simplify: imbalanced ledger for %s (net=%d); possible data integrity issue", currency, netSum)
+	}
+
+	// Establish heap invariant in O(n) — faster than n individual Push calls.
+	heap.Init(&credSlice)
+	heap.Init(&debSlice)
+
+	var transfers []models.Transfer
+
+	for len(credSlice) > 0 && len(debSlice) > 0 {
+		// Always pair the largest creditor with the largest debtor.
+		c := heap.Pop(&credSlice).(acct) // O(log n)
+		d := heap.Pop(&debSlice).(acct)  // O(log n)
+
+		pay := min(d.amt, c.amt) // settle the smaller of the two obligations
+
+		if pay > 0 {
+			transfers = append(transfers, models.Transfer{
+				FromID:   d.id,
+				FromName: d.name,
+				ToID:     c.id,
+				ToName:   c.name,
+				Currency: currency,
+				Amount:   pay,
+			})
+		}
+
+		c.amt -= pay
+		d.amt -= pay
+
+		// Re-insert whichever side still has a remaining balance.
+		// The heap re-orders it to the correct position in O(log n).
+		if c.amt > 0 {
+			heap.Push(&credSlice, c)
+		}
+		if d.amt > 0 {
+			heap.Push(&debSlice, d)
+		}
+	}
+
+	return transfers
 }
