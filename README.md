@@ -344,8 +344,10 @@ go test ./...        # split math + debt-simplification correctness
 go vet ./...         # static analysis
 ```
 
-The test suite covers the gnarly bits: equal-split penny distribution, exact-split
-reconciliation, percentage basis points, weighted shares, and minimal transfers.
+The test suite covers: guard conditions (zero/negative total, empty inputs, duplicate user,
+negative values, overflow), equal-split penny distribution, exact-split reconciliation,
+percentage basis points, weighted shares, heap reorder after partial payment, and
+minimal-transfer guarantees for multi-creditor/debtor groups.
 
 ---
 
